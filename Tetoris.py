@@ -83,6 +83,43 @@ import time
 
 class TetrisEnv(gym.Env):
 
+    def __init__(self):
+        super(TetrisEnv, self).__init__()
+        #self.action_space = spaces.Discrete(7)
+        self.action_space = spaces.Discrete(4)   # Simplified Controls
+
+        # Observation space:
+        # Grid:               10 column x 20 row bits, one per cell
+        # Placing Piece Grid: identical to Grid above
+        # Piece Type:         7 bits, 1-hot
+        # Rotation:           4 bits, 1-hot
+        # Position:           x and y position of
+        # Held Piece:         8 bits, 1-hot
+        # Held this turn:     1 bit
+        # Next Pieces:        3 x 7 bits, 1-hot each
+        # Incoming:           # of rows
+        
+        #self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(477,), dtype=np.float32)
+        
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(400,), dtype=np.float32) # Minimal observation space
+        
+        self.reward = 0.0
+        self.firstGame = True
+        self.terminated = False
+        self.truncated = False
+
+        self.board_arr = None
+        self.placing_board_arr = None
+        self.placing_onehot = None
+        self.rotation_onehot = None
+        self.pos = None
+        self.held_onehot = None
+        self.hasheld_bit = None
+        self.next_pieces_threehot = None
+        self.incoming_severity = None
+        
+    
+
 
     # By ChatGPT
     def count_enclosed_regions(self, board):
@@ -141,8 +178,8 @@ class TetrisEnv(gym.Env):
         for y, row_val in enumerate(board_ints):
             bits = np.binary_repr(row_val, width=10)
             arr[y] = np.array(list(bits), dtype=np.float32)
-        board_arr = arr.flatten()
-        #print(board_arr, flush=True)
+        self.board_arr = arr.flatten()
+        #print(self.board_arr, flush=True)
 
         # placing_Board Input
         placing_board = input().split()
@@ -152,26 +189,26 @@ class TetrisEnv(gym.Env):
         for y, row_val in enumerate(placing_board_ints):
             placing_bits = np.binary_repr(row_val, width=10)
             placing_arr[y] = np.array(list(placing_bits), dtype=np.float32)
-        placing_board_arr = placing_arr.flatten()
-        #print(board_arr, flush=True)
+        self.placing_board_arr = placing_arr.flatten()
+        #print(self.board_arr, flush=True)
 
         # Placing Input
         placing = input().split()
-        placing_onehot = np.zeros(7, dtype=np.float32)
+        self.placing_onehot = np.zeros(7, dtype=np.float32)
         match placing[1]:
-            case "I": placing_onehot[0] = 1
-            case "J": placing_onehot[1] = 1
-            case "L": placing_onehot[2] = 1
-            case "O": placing_onehot[3] = 1
-            case "S": placing_onehot[4] = 1
-            case "T": placing_onehot[5] = 1
-            case "Z": placing_onehot[6] = 1
-        #print(placing_onehot, flush=True)
+            case "I": self.placing_onehot[0] = 1
+            case "J": self.placing_onehot[1] = 1
+            case "L": self.placing_onehot[2] = 1
+            case "O": self.placing_onehot[3] = 1
+            case "S": self.placing_onehot[4] = 1
+            case "T": self.placing_onehot[5] = 1
+            case "Z": self.placing_onehot[6] = 1
+        #print(self.placing_onehot, flush=True)
 
         # Rotation Input
         rotation = input().split()
-        rotation_onehot = np.eye(4)[int(rotation[1])]
-        #print(rotation_onehot)
+        self.rotation_onehot = np.eye(4)[int(rotation[1])]
+        #print(self.rotation_onehot)
 
         # Position Input
         position = input().split()
@@ -179,59 +216,59 @@ class TetrisEnv(gym.Env):
         posy = np.eye(25)[min(24,int(position[2]))]
         #print(posx)
         #print(posy)
-        pos = np.concatenate([posx, posy])
-        #print(pos, flush=True)
+        self.pos = np.concatenate([posx, posy])
+        #print(self.pos, flush=True)
 
         # Held Input
         held = input().split()
-        held_onehot = np.zeros(8, dtype=np.float32)
+        self.held_onehot = np.zeros(8, dtype=np.float32)
         match held[1]:
-            case "I": held_onehot[0] = 1
-            case "J": held_onehot[1] = 1
-            case "L": held_onehot[2] = 1
-            case "O": held_onehot[3] = 1
-            case "S": held_onehot[4] = 1
-            case "T": held_onehot[5] = 1
-            case "Z": held_onehot[6] = 1
-            case "0": held_onehot[7] = 1
-        #print(held_onehot, flush=True)
+            case "I": self.held_onehot[0] = 1
+            case "J": self.held_onehot[1] = 1
+            case "L": self.held_onehot[2] = 1
+            case "O": self.held_onehot[3] = 1
+            case "S": self.held_onehot[4] = 1
+            case "T": self.held_onehot[5] = 1
+            case "Z": self.held_onehot[6] = 1
+            case "0": self.held_onehot[7] = 1
+        #print(self.held_onehot, flush=True)
 
         # Has Held Input
         hasheld = input().split()
-        hasheld_bit = np.array([1.0 if hasheld[1]=="true" else 0.0], dtype=np.float32)
-        #print(hasheld_bit, flush=True)
+        self.hasheld_bit = np.array([1.0 if hasheld[1]=="true" else 0.0], dtype=np.float32)
+        #print(self.hasheld_bit, flush=True)
 
         # Next Pieces Input
-        next_pieces_threehot = np.zeros((3,7), dtype=np.float32)
+        self.next_pieces_threehot = np.zeros((3,7), dtype=np.float32)
         nextPieces = input().split()
         for i in range(3):
             match nextPieces[1+i]:
-                case "I": next_pieces_threehot[i,0] = 1
-                case "J": next_pieces_threehot[i,1] = 1
-                case "L": next_pieces_threehot[i,2] = 1
-                case "O": next_pieces_threehot[i,3] = 1
-                case "S": next_pieces_threehot[i,4] = 1
-                case "T": next_pieces_threehot[i,5] = 1
-                case "Z": next_pieces_threehot[i,6] = 1
-        next_pieces_threehot = next_pieces_threehot.flatten()
-        #print(next_pieces_threehot, flush=True)
+                case "I": self.next_pieces_threehot[i,0] = 1
+                case "J": self.next_pieces_threehot[i,1] = 1
+                case "L": self.next_pieces_threehot[i,2] = 1
+                case "O": self.next_pieces_threehot[i,3] = 1
+                case "S": self.next_pieces_threehot[i,4] = 1
+                case "T": self.next_pieces_threehot[i,5] = 1
+                case "Z": self.next_pieces_threehot[i,6] = 1
+        self.next_pieces_threehot = next_pieces_threehot.flatten()
+        #print(self.next_pieces_threehot, flush=True)
 
         # Incoming Severity Input
         incoming = input().split()
-        incoming_severity = np.array([min(int(incoming[1]), 20) / 20.0], dtype=np.float32)
-        #print(incoming_severity, flush=True)
+        self.incoming_severity = np.array([min(int(incoming[1]), 20) / 20.0], dtype=np.float32)
+        #print(self.incoming_severity, flush=True)
 
         """
         self.observation = np.concatenate([
-            board_arr,          # 0:199
-            placing_board_arr,  # 200:399
-            placing_onehot,     # 400:406
-            rotation_onehot,
-            pos,
-            held_onehot,
-            hasheld_bit,
-            next_pieces_threehot,
-            incoming_severity
+            self.board_arr,          # 0:199
+            self.placing_board_arr,  # 200:399
+            self.placing_onehot,     # 400:406
+            self.rotation_onehot,
+            self.pos,
+            self.held_onehot,
+            self.hasheld_bit,
+            self.next_pieces_threehot,
+            self.incoming_severity
         ])
         """
         #print("Observation:")
@@ -239,45 +276,15 @@ class TetrisEnv(gym.Env):
 
         # Simplified Observation Set
         self.observation = np.concatenate([
-            board_arr,          # 0:199
-            placing_board_arr  # 200:399
-            #placing_onehot     # 400:406
-            #rotation_onehot,
-            #pos,
-            #held_onehot,
-            #hasheld_bit,
-            #next_pieces_threehot,
-            #incoming_severity
+            self.board_arr,          # 0:199
+            self.placing_board_arr  # 200:399
         ])
 
         return True
 
     
 
-    def __init__(self):
-        super(TetrisEnv, self).__init__()
-        #self.action_space = spaces.Discrete(7)
-        self.action_space = spaces.Discrete(4)   # Simplified Controls
-
-        # Observation space:
-        # Grid:               10 column x 20 row bits, one per cell
-        # Placing Piece Grid: identical to Grid above
-        # Piece Type:         7 bits, 1-hot
-        # Rotation:           4 bits, 1-hot
-        # Position:           x and y position of
-        # Held Piece:         8 bits, 1-hot
-        # Held this turn:     1 bit
-        # Next Pieces:        3 x 7 bits, 1-hot each
-        # Incoming:           # of rows
-        
-        #self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(477,), dtype=np.float32)
-        
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(400,), dtype=np.float32) # Minimal observation space
-        
-        self.reward = 0.0
-        self.firstGame = True
-        self.terminated = False
-        self.truncated = False
+    
 
 
 
@@ -509,6 +516,8 @@ class TetrisEnv(gym.Env):
 
 # ## Define CNN-MLP Hybrid Feature Extractor
 # (Written by ChatGPT)
+# 
+# (Overridden to be minimal, CNN-only)
 
 # In[ ]:
 
