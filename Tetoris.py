@@ -117,7 +117,28 @@ class TetrisEnv(gym.Env):
         self.hasheld_bit = None
         self.next_pieces_threehot = None
         self.incoming_severity = None
-        
+
+        self.prev_board_arr = None
+        self.prev_placing_board_arr = None
+        self.prev_placing_onehot = None
+        self.prev_rotation_onehot = None
+        self.prev_pos = None
+        self.prev_held_onehot = None
+        self.prev_hasheld_bit = None
+        self.prev_next_pieces_threehot = None
+        self.prev_incoming_severity = None
+
+
+    def save_previous_observation_components(self):
+        self.prev_board_arr = self.board_arr
+        self.prev_placing_board_arr = self.placing_board_arr
+        self.prev_placing_onehot = self.placing_onehot
+        self.prev_rotation_onehot = self.rotation_onehot
+        self.prev_pos = self.pos
+        self.prev_held_onehot = self.held_onehot
+        self.prev_hasheld_bit = self.hasheld_bit
+        self.prev_next_pieces_threehot = self.next_pieces_threehot
+        self.prev_incoming_severity = self.incoming_severity
     
 
 
@@ -250,7 +271,7 @@ class TetrisEnv(gym.Env):
                 case "S": self.next_pieces_threehot[i,4] = 1
                 case "T": self.next_pieces_threehot[i,5] = 1
                 case "Z": self.next_pieces_threehot[i,6] = 1
-        self.next_pieces_threehot = next_pieces_threehot.flatten()
+        self.next_pieces_threehot = self.next_pieces_threehot.flatten()
         #print(self.next_pieces_threehot, flush=True)
 
         # Incoming Severity Input
@@ -348,12 +369,14 @@ class TetrisEnv(gym.Env):
             print("ready", flush=True)
             strin = input()    # receive ack
             print(strin, flush=True)
+            
+            self.save_previous_observation_components()
             self.previous_observation = self.observation
             self.parse_observations()
 
 
             # If a piece was placed
-            piece_changed = not np.array_equal(self.previous_observation[455:476], self.observation[455:476])
+            piece_changed = not np.array_equal(self.next_pieces_threehot, self.prev_next_pieces_threehot)
             #print(self.previous_observation[455:476])
             #print(self.observation[455:476])
             if piece_changed:
