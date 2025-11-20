@@ -3,12 +3,12 @@
 
 # # Teto
 
+# ## Environment Definition
+
 # In[ ]:
 
 
 import time
-print("Hello World")
-time.sleep(1.5)
 teto = """                                          =**++**+****=+==.                                         
                                     .***************#**++++++==-                                    
                                   **#***##*#*++*****+**++++==+======.                               
@@ -66,10 +66,7 @@ teto = """                                          =**++**+****=+==.
                              .%%#******                     -%%#*****                               
                                 :%%%=                                                               """
 print(teto)
-time.sleep(1.5)
 
-
-# ## Environment Definition
 
 # In[ ]:
 
@@ -85,6 +82,54 @@ import time
 
 
 class TetrisEnv(gym.Env):
+
+
+    # By ChatGPT
+    def count_enclosed_regions(self, board):
+        """
+        Counts the number of empty regions fully enclosed (orthogonally) by 1s 
+        and not touching the top row.
+        board: 2D numpy array of shape (20, 10), 0 = empty, 1 = filled
+        """
+        rows, cols = board.shape
+        visited = np.zeros_like(board, dtype=bool)
+        enclosed_count = 0
+    
+        # Directions for orthogonal neighbors: up, down, left, right
+        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    
+        for r in range(rows):
+            for c in range(cols):
+                if board[r, c] == 0 and not visited[r, c]:
+                    # Start BFS for this empty region
+                    queue = deque()
+                    queue.append((r, c))
+                    visited[r, c] = True
+                    touches_top = (r == 0)
+                    enclosed = True
+    
+                    while queue:
+                        cr, cc = queue.popleft()
+                        for dr, dc in directions:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < rows and 0 <= nc < cols:
+                                if board[nr, nc] == 0 and not visited[nr, nc]:
+                                    visited[nr, nc] = True
+                                    queue.append((nr, nc))
+                            else:
+                                # Reaching outside the board (shouldn't happen in Tetris), still enclosed
+                                continue
+                        if cr == 0:
+                            touches_top = True
+    
+                    # Only count if region doesn't touch top
+                    if not touches_top:
+                        enclosed_count += 1
+    
+        return enclosed_count
+
+
+        
 
     def parse_observations(self):
 
@@ -176,6 +221,7 @@ class TetrisEnv(gym.Env):
         incoming_severity = np.array([min(int(incoming[1]), 20) / 20.0], dtype=np.float32)
         #print(incoming_severity, flush=True)
 
+        """
         self.observation = np.concatenate([
             board_arr,          # 0:199
             placing_board_arr,  # 200:399
@@ -187,56 +233,24 @@ class TetrisEnv(gym.Env):
             next_pieces_threehot,
             incoming_severity
         ])
+        """
         #print("Observation:")
         #print(self.observation, flush=True)
 
+        # Simplified Observation Set
+        self.observation = np.concatenate([
+            board_arr,          # 0:199
+            placing_board_arr  # 200:399
+            #placing_onehot     # 400:406
+            #rotation_onehot,
+            #pos,
+            #held_onehot,
+            #hasheld_bit,
+            #next_pieces_threehot,
+            #incoming_severity
+        ])
+
         return True
-
-
-
-    # By ChatGPT
-    def count_enclosed_regions(self, board):
-        """
-        Counts the number of empty regions fully enclosed (orthogonally) by 1s 
-        and not touching the top row.
-        board: 2D numpy array of shape (20, 10), 0 = empty, 1 = filled
-        """
-        rows, cols = board.shape
-        visited = np.zeros_like(board, dtype=bool)
-        enclosed_count = 0
-    
-        # Directions for orthogonal neighbors: up, down, left, right
-        directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-    
-        for r in range(rows):
-            for c in range(cols):
-                if board[r, c] == 0 and not visited[r, c]:
-                    # Start BFS for this empty region
-                    queue = deque()
-                    queue.append((r, c))
-                    visited[r, c] = True
-                    touches_top = (r == 0)
-                    enclosed = True
-    
-                    while queue:
-                        cr, cc = queue.popleft()
-                        for dr, dc in directions:
-                            nr, nc = cr + dr, cc + dc
-                            if 0 <= nr < rows and 0 <= nc < cols:
-                                if board[nr, nc] == 0 and not visited[nr, nc]:
-                                    visited[nr, nc] = True
-                                    queue.append((nr, nc))
-                            else:
-                                # Reaching outside the board (shouldn't happen in Tetris), still enclosed
-                                continue
-                        if cr == 0:
-                            touches_top = True
-    
-                    # Only count if region doesn't touch top
-                    if not touches_top:
-                        enclosed_count += 1
-    
-        return enclosed_count
 
     
 
@@ -246,17 +260,20 @@ class TetrisEnv(gym.Env):
         self.action_space = spaces.Discrete(4)   # Simplified Controls
 
         # Observation space:
-        # Grid: 10 column x 20 row bits, one per cell
-        # Placing piece grid, see above
-        # Piece Type: 7 bits, 1-hot
-        # Rotation: 4 bits, 1-hot
-        # Position: x and y position of
-        # Held Piece: 8 bits, 1-hot
-        # Held this turn: 1 bit
-        # Next Pieces: 3 x 7 bits, 1-hot each
-        # Incoming: # of rows
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(477,), dtype=np.float32)
-
+        # Grid:               10 column x 20 row bits, one per cell
+        # Placing Piece Grid: identical to Grid above
+        # Piece Type:         7 bits, 1-hot
+        # Rotation:           4 bits, 1-hot
+        # Position:           x and y position of
+        # Held Piece:         8 bits, 1-hot
+        # Held this turn:     1 bit
+        # Next Pieces:        3 x 7 bits, 1-hot each
+        # Incoming:           # of rows
+        
+        #self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(477,), dtype=np.float32)
+        
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(400,), dtype=np.float32) # Minimal observation space
+        
         self.reward = 0.0
         self.firstGame = True
         self.terminated = False
@@ -503,15 +520,11 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 class TetrisFeatureExtractor(BaseFeaturesExtractor):
     """
-    Custom feature extractor for the Tetris environment.
-    - CNN on 2-channel (20x10x2) board input:
-        [0] placed blocks
-        [1] currently falling piece
-    - MLP on the 1D context vector
-    - BatchNorm + Dropout regularization
+    Uses ONLY the 2-channel CNN input (20x10x2 board).
     """
 
     def __init__(self, observation_space, features_dim: int = 256):
+        # We will overwrite features_dim later after computing cnn_out_size
         super().__init__(observation_space, features_dim)
 
         # -------------------------------
@@ -531,47 +544,27 @@ class TetrisFeatureExtractor(BaseFeaturesExtractor):
             nn.Flatten()
         )
 
-        # dynamically determine flattened CNN output size
+        # compute flattened CNN output size
         with th.no_grad():
-            dummy_input = th.zeros((1, 2, 20, 10))   # <-- now 2 channels
+            dummy_input = th.zeros((1, 2, 20, 10))
             cnn_out_size = self.board_cnn(dummy_input).shape[1]
 
-        # -------------------------------
-        # Context branch: everything except the 2*200 board cells
-        # -------------------------------
-        context_size = observation_space.shape[0] - 400
-        self.context_mlp = nn.Sequential(
-            nn.Linear(context_size, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-
-            nn.Linear(128, 64),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-        )
-
-        # -------------------------------
-        # Combine CNN and MLP features
-        # -------------------------------
-        combined_dim = cnn_out_size + 64
+        # Replace the final layer to output desired feature dimension
         self.final = nn.Sequential(
-            nn.Linear(combined_dim, features_dim),
+            nn.Linear(cnn_out_size, features_dim),
             nn.ReLU(),
             nn.Dropout(0.3)
         )
 
+        # Update features_dim so SB3 knows the output shape
+        self._features_dim = features_dim
+
     def forward(self, observations: th.Tensor) -> th.Tensor:
-        # Extract the two 20x10 channels (0:200 = board, 200:400 = piece)
+        # Extract only the board channels (2 * 200 = 400 values)
         board_data = observations[:, :400].reshape((-1, 2, 20, 10))
-        context = observations[:, 400:]
 
         board_features = self.board_cnn(board_data)
-        context_features = self.context_mlp(context)
-
-        combined = th.cat([board_features, context_features], dim=1)
-        return self.final(combined)
+        return self.final(board_features)
 
 
 # ## Initialize Environment and Set Up Model
