@@ -1,0 +1,45 @@
+How to use the engine interface
+you are free to use command line arguments however you want, communication will be done through stdin (incoming from game) and stdout (engine to game)
+
+Generally, anything that isn't what the game expects will be ignored, so you can write info logs to stdout as you please (including fancy intro text when the engine boots)
+
+Option parse:
+Engine can supply options during this step, the game will respond with an ack when ready or kill is sent
+
+ready - will resume execution with the supplied settings
+kill - will instruct the game to kill the engine
+option seed - will set the current seed (slightly different during the game)
+option garbage - will set the garbage interval (examples: "none" - no garbage, "1-100" - 1 line of garbage every 100 frames, "1-100 2-150" - 1 line of garbage every 100 frames AND 2 lines of garbage every 150 frames)
+
+Startup:
+an option parse will happen here, use this time to load libraries and load the model or whatever before the game starts
+
+Game loop:
+
+The game will request a move with a bunch of commands as follows
+board - the current state of the board as 40 integer values, each one being a row from bottom to top and bitwise left to right    examples: 1 -> x.........   985 -> x..xx.xxxx   176 -> ....xx.x..
+placing - letter of the piece currently being placed (one of I J L O S T Z)
+rotation - rotation of the piece currently being placed (int 0-3)
+position - the position of the piece currently being placed (two ints x y (x=0 is left, y=0 is bottom, measured at the top left corner of the piece))
+held - the piece currently held (0 if none)
+hasheld - whether the engine has held a piece this turn (true/false)
+next - next 3 pieces in the queue (piece 1 2 3)
+incoming - amount of garbage that's incoming (int)
+
+this will be followed by a single "move" command, telling the engine to thonk
+
+the engine will be expected to output "move [move]", where [move] is one of either left, right, hard, soft, cw, ccw, or hold, anything not starting with "move" will be ignored.
+
+then, the game will send the results of the move back to the engine as follows (or if the game ended, will instead do the game over section)
+lines - how many lines were cleared (int)
+sent - how much garbage was sent (int)
+b2b - if the engine is currently in the back to back state (true/false)
+combo - the current line clearing combo (int)
+invalidmove - if the move was invalid (bumping into a wall) and defaulted to a softdrop (true/false)
+repeatedmove - if the move sent the piece to a spot it's been to before, sending a softdrop to prevent loops (true/false)
+
+the game will then start another option parse, which can either be skipped by simply returning "ready", or you can change the settings
+changing the seed here will send you to the game over state, which you will then need to set the seed again for it to register in the next game
+
+Game over:
+when the game ends due to being topped out, the game will send a "gameover" command, and will start another parse options
