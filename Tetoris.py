@@ -665,10 +665,14 @@ policy_kwargs = dict(
 )
 
 
-cfg_path = 'model.cfg'
-
 # If model config file is empty, initialize empty model. Otherwise, load model
-if os.path.getsize(cfg_path) == 0:
+cfg_path = 'model.cfg'
+try:
+    using_pretrained_model = False if os.path.getsize(cfg_path) == 0 else True
+except Exception as e:
+    print(f"An error occurred: {e}")
+
+if not using_pretrained_model:
     print("Initializing untrained model")
     model = PPO(
     "MlpPolicy",
@@ -680,7 +684,7 @@ if os.path.getsize(cfg_path) == 0:
     batch_size=64,
     n_epochs=10,
     device = "cuda",
-    tensorboard_log=logdir,
+    #tensorboard_log=logdir,
     gamma=0.99,
     seed=0
     )
@@ -701,6 +705,8 @@ else:
         print(f"Error: Model {content} was not found.")
     except Exception as e:
         print(f"An error occurred: {e}")
+
+model.tensorboard_log=logdir
 
 
 # In[ ]:
