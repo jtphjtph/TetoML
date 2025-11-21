@@ -128,6 +128,15 @@ class TetrisEnv(gym.Env):
         self.prev_next_pieces_threehot = None
         self.prev_incoming_severity = None
 
+        self.stepend_timestamp = None
+        self.stepbegin_timestamp = None
+        
+        self.stdioend_timestmap = None
+        self.stdiobegin_timestamp = None
+
+        self.renderend_timestamp = None
+        self.renderbegin_timestamp = None
+
 
     def save_previous_observation_components(self):
         self.prev_board_arr = self.board_arr
@@ -193,6 +202,10 @@ class TetrisEnv(gym.Env):
 
         # Board Input
         board = input().split()
+        self.renderend_timestamp = time.perf_counter()
+        render_time = self.renderend_timestamp - self.renderbegin_timestamp
+        print(f"Render took about: {(render_time*1000):.4f} ms")
+        
         board_ints = [int(board[i+1]) for i in range(20)]
         #print(board_ints, flush=True)
         arr = np.zeros((20, 10), dtype=np.float32)
@@ -327,8 +340,16 @@ class TetrisEnv(gym.Env):
     - Hole Creation:  -= 0.25
     """
     def step(self, action):
+        self.stepbegin_timestamp = time.perf_counter()
+
+        if self.stepend_timestamp != None:
+            step_interim = self.stepbegin_timestamp - self.stepend_timestamp
+            print(f"Next step starting after interim of: {(step_interim*1000):.4f} ms (since previous step ended)")
+        
         print("Stepping!", flush=True)
 
+        
+        self.stdiobegin_timestamp = time.perf_counter()
         strin = input()    # receive move
         if strin == "move": print("Got move order")
         """
@@ -342,6 +363,7 @@ class TetrisEnv(gym.Env):
             case 5: print("move ccw", flush=True)
             case 6: print("move hold", flush=True)
         """
+
         # Simplified Action Set
         match action:
             case 0: print("move left", flush=True)
@@ -366,13 +388,21 @@ class TetrisEnv(gym.Env):
             combo = int(input().split()[1])
             invalidmove = True if input().split()[1]=="true" else False
             repeatedmove = True if input().split()[1]=="true" else False
+            
+            self.renderbegin_timestamp = time.perf_counter()
             print("ready", flush=True)
             strin = input()    # receive ack
             print(strin, flush=True)
             
+            
             self.save_previous_observation_components()
             self.previous_observation = self.observation
             self.parse_observations()
+
+            self.stdioend_timestamp = time.perf_counter()
+            stdio_time = self.stdioend_timestamp - self.stdiobegin_timestamp
+            print(f"Doing the important stdio things took: {(stdio_time*1000):.4f} ms")
+            
 
 
             # If a piece was placed
@@ -485,6 +515,10 @@ class TetrisEnv(gym.Env):
             else: self.reward = -5
         """
 
+        self.stepend_timestamp = time.perf_counter()
+        step_time = self.stepend_timestamp - self.stepbegin_timestamp
+        print(f"Full step took: {(step_time*1000):.4f} ms")
+
         return self.observation, self.reward, self.terminated, self.truncated, info
 
 
@@ -511,6 +545,7 @@ class TetrisEnv(gym.Env):
 
         print("options seed 1", flush=True)
 
+        self.renderbegin_timestamp = time.perf_counter()
         print("ready", flush=True)
         strin = input()    # Receive ack
         #print(strin)
@@ -629,7 +664,13 @@ policy_kwargs = dict(
     net_arch=[dict(pi=[128, 64], vf=[128, 64])]
 )
 
-model = PPO(
+
+cfg_path = 'model.cfg'
+
+# If model config file is empty, initialize empty model. Otherwise, load model
+if os.path.getsize(cfg_path) == 0:
+    print("Initializing untrained model")
+    model = PPO(
     "MlpPolicy",
     env,
     policy_kwargs=policy_kwargs,
@@ -642,7 +683,24 @@ model = PPO(
     tensorboard_log=logdir,
     gamma=0.99,
     seed=0
-)
+    )
+else:
+    try:
+        with open(cfg_path, 'r') as file:
+            content = file.read()
+            content = content.strip()
+    except FileNotFoundError:
+        print(f"Error: Config file {cfg_path} was not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        
+    try: 
+        print("Loading trained model from " + content)
+        model = PPO.load(content, env=env, device="cuda")
+    except FileNotFoundError:
+        print(f"Error: Model {content} was not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 
 # In[ ]:
@@ -691,6 +749,7 @@ import traceback
 TIMESTEPS = 1e5;      # Train indefinitely, saving every 100k timesteps
 iters = 0
 callback = LoggerCallback()
+
 
 try:
     while True:
