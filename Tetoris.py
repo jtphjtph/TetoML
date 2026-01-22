@@ -89,6 +89,13 @@ import time
 
 class TetrisEnv(gym.Env):
 
+    def write_line_to_pfe(self, s):
+        self.pfe.write((s + "\n").encode("utf-8"))
+        self.pfe.flush()
+
+    def read_line_from_pft(self):
+        return self.pft.readline().decode("utf-8", errors="replace").rstrip("\n")
+
     def __init__(self):
         super(TetrisEnv, self).__init__()
         #self.action_space = spaces.Discrete(7)
@@ -155,18 +162,14 @@ class TetrisEnv(gym.Env):
         print("pftpath = ", pftpath)
         print("pfepath = ", pfepath)
         
-        #time.sleep(1)
-        
         print("Opening pipess...")
         try:
-            fd = os.open(pftpath, os.O_RDWR)
-            self.pft = os.fdopen(fd, "r", buffering=1)
-
-            fd = os.open(pfepath, os.O_RDWR)
-            self.pfe = os.fdopen(fd, "r", buffering=1)
+            # read from parent
+            self.pft = os.fdopen(os.open(pftpath, os.O_RDWR), "rb", buffering=0)
             
-            #self.pft = open(pftpath, 'r+')
-            #self.pfe = open(pfepath, 'w')
+            # write to parent
+            self.pfe = os.fdopen(os.open(pfepath, os.O_RDWR), "wb", buffering=0)
+            
             print("Pipes opened")
         except Exception as e:
                 print(f"An error occurred: {e}")
@@ -236,7 +239,7 @@ class TetrisEnv(gym.Env):
 
         # Board Input
         #board = input().split()
-        board = pft.readline().split()
+        board = self.read_line_from_pft().split()
         self.renderend_timestamp = time.perf_counter()
         render_time = self.renderend_timestamp - self.renderbegin_timestamp
         print(f"Render took about: {(render_time*1000):.4f} ms")
@@ -251,7 +254,7 @@ class TetrisEnv(gym.Env):
         #print(self.board_arr, flush=True)
 
         # placing_Board Input
-        placing_board = pft.readline().split()
+        placing_board = self.read_line_from_pft().split()
         placing_board_ints = [int(placing_board[i+1]) for i in range(20)]
         #print(placing_board_ints, flush=True)
         placing_arr = np.zeros((20, 10), dtype=np.float32)
@@ -262,7 +265,7 @@ class TetrisEnv(gym.Env):
         #print(self.board_arr, flush=True)
 
         # Placing Input
-        placing = pft.readline().split()
+        placing = self.read_line_from_pft().split()
         self.placing_onehot = np.zeros(7, dtype=np.float32)
         match placing[1]:
             case "I": self.placing_onehot[0] = 1
@@ -275,12 +278,12 @@ class TetrisEnv(gym.Env):
         #print(self.placing_onehot, flush=True)
 
         # Rotation Input
-        rotation = pft.readline().split()
+        rotation = self.read_line_from_pft().split()
         self.rotation_onehot = np.eye(4)[int(rotation[1])]
         #print(self.rotation_onehot)
 
         # Position Input
-        position = pft.readline().split()
+        position = self.read_line_from_pft().split()
         posx = np.eye(10)[int(position[1])]
         posy = np.eye(25)[min(24,int(position[2]))]
         #print(posx)
@@ -289,7 +292,7 @@ class TetrisEnv(gym.Env):
         #print(self.pos, flush=True)
 
         # Held Input
-        held = pft.readline().split()
+        held = self.read_line_from_pft().split()
         self.held_onehot = np.zeros(8, dtype=np.float32)
         match held[1]:
             case "I": self.held_onehot[0] = 1
@@ -303,13 +306,13 @@ class TetrisEnv(gym.Env):
         #print(self.held_onehot, flush=True)
 
         # Has Held Input
-        hasheld = pft.readline().split()
+        hasheld = self.read_line_from_pft().split()
         self.hasheld_bit = np.array([1.0 if hasheld[1]=="true" else 0.0], dtype=np.float32)
         #print(self.hasheld_bit, flush=True)
 
         # Next Pieces Input
         self.next_pieces_threehot = np.zeros((3,7), dtype=np.float32)
-        nextPieces = pft.readline().split()
+        nextPieces = self.read_line_from_pft().split()
         for i in range(3):
             match nextPieces[1+i]:
                 case "I": self.next_pieces_threehot[i,0] = 1
@@ -323,7 +326,7 @@ class TetrisEnv(gym.Env):
         #print(self.next_pieces_threehot, flush=True)
 
         # Incoming Severity Input
-        incoming = pft.readline().split()
+        incoming = self.read_line_from_pft().split()
         self.incoming_severity = np.array([min(int(incoming[1]), 20) / 20.0], dtype=np.float32)
         #print(self.incoming_severity, flush=True)
 
@@ -385,31 +388,31 @@ class TetrisEnv(gym.Env):
 
         
         self.stdiobegin_timestamp = time.perf_counter()
-        strin = pft.readline()    # receive move
-        if strin == "move": print("Got move order")
+        strin = self.read_line_from_pft()    # receive move
+        if strin == "move": print("Got move request")
         """
         # Full Action Set
         match action:
-            case 0: print("move left", file=self.pfe, flush=True)
-            case 1: print("move right", file=self.pfe, flush=True)
-            case 2: print("move hard", file=self.pfe, flush=True)
-            case 3: print("move soft", file=self.fe, flush=True)
-            case 4: print("move cw", file=self.pfe, flush=True)
-            case 5: print("move ccw", file=self.pfe, flush=True)
-            case 6: print("move hold", file=self.pfe, flush=True)
+            case 0: self.write_line_to_pfe("move left")
+            case 1: self.write_line_to_pfe("move right")
+            case 2: self.write_line_to_pfe("move hard")
+            case 3: self.write_line_to_pfe("move soft")
+            case 4: self.write_line_to_pfe("move cw")
+            case 5: self.write_line_to_pfe("move ccw",)
+            case 6: self.write_line_to_pfe(""move hold")
         """
 
         # Simplified Action Set
         match action:
-            case 0: print("move left", file=self.pfe, flush=True)
-            case 1: print("move right", file=self.pfe, flush=True)
-            case 2: print("move cw", file=self.pfe, flush=True)
-            case 3: print("move soft", file=self.pfe, flush=True)
+            case 0: self.write_line_to_pfe("move left")
+            case 1: self.write_line_to_pfe("move right")
+            case 2: self.write_line_to_pfe("move cw")
+            case 3: self.write_line_to_pfe("move soft")
 
         self.reward = 0
 
-        strin = pft.readline()   # receive ack
-        strin = pft.readline()   # receive "gameover" or first line of report (`lines`)
+        strin = self.read_line_from_pft()   # receive ack
+        strin = self.read_line_from_pft()   # receive "gameover" or first line of report (`lines`)
         if(strin == "gameover"):
             #print("Gameovered. Rip.")
             self.terminated = True
@@ -418,19 +421,19 @@ class TetrisEnv(gym.Env):
             self.observation = np.zeros(self.observation_space.shape, dtype=np.float32)
         else:
             lines = int(strin.split()[1])
-            sent = int(pft.readline().split()[1])
-            b2b = True if ipft.readline().split()[1]=="true" else False
-            combo = int(pft.readline().split()[1])
-            invalidmove = True if pft.readline().split()[1]=="true" else False
-            repeatedmove = True if pft.readline().split()[1]=="true" else False
+            sent = int(self.read_line_from_pft().split()[1])
+            b2b = True if self.read_line_from_pft().split()[1]=="true" else False
+            combo = int(self.read_line_from_pft().split()[1])
+            invalidmove = True if self.read_line_from_pft().split()[1]=="true" else False
+            repeatedmove = True if self.read_line_from_pft().split()[1]=="true" else False
             
             self.renderbegin_timestamp = time.perf_counter()
-            print("ready", file=self.pfe, flush=True)
+            self.write_line_to_pfe("ready")
 
             
             
-            strin = pft.readline()    # receive ack
-            print(strin, flush=True)
+            strin = self.read_line_from_pft()    # receive ack
+            #print(strin, flush=True)
             
             
             self.save_previous_observation_components()
@@ -581,13 +584,13 @@ class TetrisEnv(gym.Env):
         #    strin = input()    # Receive gameover
         #else: self.firstGame = False
 
-        print("options seed 1", file=self.pfe, flush=True)
-
+        self.write_line_to_pfe("options seed 1")
+        
         self.renderbegin_timestamp = time.perf_counter()
-        print("ready", file=pfe, flush=True)
-        print("ready", flush=True)
-        strin = pft.readline()    # Receive ack
-        print(strin)
+        self.write_line_to_pfe("ready")
+        #print("ready", flush=True)
+        strin = self.read_line_from_pft()    # Receive ack
+        #print(strin)
 
         self.previous_observation = np.zeros(self.observation_space.shape, dtype=np.float32)
         self.parse_observations()
