@@ -150,7 +150,7 @@ class TetrisEnv(gym.Env):
         self.renderend_timestamp = None
         self.renderbegin_timestamp = None
 
-
+        self.piece_placement_timer = 0
         
         print(sys.argv)
         print(sys.argv[1].split('=')[1])
@@ -162,7 +162,7 @@ class TetrisEnv(gym.Env):
         print("pftpath = ", pftpath)
         print("pfepath = ", pfepath)
         
-        print("Opening pipess...")
+        print("Opening pipes...")
         try:
             # read from parent
             self.pft = os.fdopen(os.open(pftpath, os.O_RDWR), "rb", buffering=0)
@@ -242,7 +242,7 @@ class TetrisEnv(gym.Env):
         board = self.read_line_from_pft().split()
         self.renderend_timestamp = time.perf_counter()
         render_time = self.renderend_timestamp - self.renderbegin_timestamp
-        print(f"Render took about: {(render_time*1000):.4f} ms")
+        #print(f"Render took about: {(render_time*1000):.4f} ms")
         
         board_ints = [int(board[i+1]) for i in range(20)]
         #print(board_ints, flush=True)
@@ -354,8 +354,28 @@ class TetrisEnv(gym.Env):
 
         return True
 
-    
 
+    
+    
+    def count_board_jaggedness(self, board):
+        jaggedness = 0
+        #print(board, "\n")
+        #print(board[0],"\n")
+        #print(board[:,0],"\n")
+        for col in range(9):
+            #if np.argwhere(board[:,col]==1).size != 0:
+            #    print("column height of", board[:,col], "is", np.argwhere(board[:,col]==1)[-1][0]+1 )
+            #else: print("column height of", board[:,col], "is 0")
+
+            currcolheight = (np.argwhere(board[:,col  ]==1)[-1][0]+1) if (np.argwhere(board[:,col  ]==1).size != 0) else 0
+            nextcolheight = (np.argwhere(board[:,col+1]==1)[-1][0]+1) if (np.argwhere(board[:,col+1]==1).size != 0) else 0
+            #print("Jaggedness of", col, "to", col+1, "is", abs(currcolheight - nextcolheight))
+            jaggedness += abs(currcolheight - nextcolheight)
+
+        #print("Total jaggedness of board is", jaggedness)
+        return jaggedness
+
+    
     
 
 
@@ -366,7 +386,7 @@ class TetrisEnv(gym.Env):
     - Default:    0
         - Placed:     += 0.5
         - Max Height: -= 0.1*(# of rows)
-        - Overhang:   -= max(-0.75, 0.05 - (0.25 * piece_overhang)) # That is, 0.05 minus 0.25 per tile of overhang, minimum of -=0.75
+        - Overhang:   += max(-1.25, 0.35 - (0.35 * piece_overhang))    # That is, 0.35 minus 0.35 per tile of overhang, minimum of -1.25
         - Lines:      += 1*(# lines cleared)
         - Sent:       += 1*(# lines sent)
         - B2B:        += 1
@@ -382,67 +402,70 @@ class TetrisEnv(gym.Env):
 
         if self.stepend_timestamp != None:
             step_interim = self.stepbegin_timestamp - self.stepend_timestamp
-            print(f"Next step starting after interim of: {(step_interim*1000):.4f} ms (since previous step ended)")
+            #print(f"Next step starting after interim of: {(step_interim*1000):.4f} ms (since previous step ended)")
         
-        print("Stepping!", flush=True)
+        #print("Stepping!", flush=True)
 
         
         self.stdiobegin_timestamp = time.perf_counter()
         strin = self.read_line_from_pft()    # receive move
-        if strin == "move": print("Got move request")
-        """
-        # Full Action Set
-        match action:
-            case 0: self.write_line_to_pfe("move left")
-            case 1: self.write_line_to_pfe("move right")
-            case 2: self.write_line_to_pfe("move hard")
-            case 3: self.write_line_to_pfe("move soft")
-            case 4: self.write_line_to_pfe("move cw")
-            case 5: self.write_line_to_pfe("move ccw",)
-            case 6: self.write_line_to_pfe(""move hold")
-        """
+        #if strin == "move": print("Got move request")
 
-        # Simplified Action Set
-        match action:
-            case 0: self.write_line_to_pfe("move left")
-            case 1: self.write_line_to_pfe("move right")
-            case 2: self.write_line_to_pfe("move cw")
-            case 3: self.write_line_to_pfe("move soft")
+        if self.piece_placement_timer < 50:
+            """
+            # Full Action Set
+            match action:
+                case 0: self.write_line_to_pfe("move left")
+                case 1: self.write_line_to_pfe("move right")
+                case 2: self.write_line_to_pfe("move hard")
+                case 3: self.write_line_to_pfe("move soft")
+                case 4: self.write_line_to_pfe("move cw")
+                case 5: self.write_line_to_pfe("move ccw",)
+                case 6: self.write_line_to_pfe("move hold")
+            """
+    
+            # Simplified Action Set
+            match action:
+                case 0: self.write_line_to_pfe("move left")
+                case 1: self.write_line_to_pfe("move right")
+                case 2: self.write_line_to_pfe("move cw")
+                case 3: self.write_line_to_pfe("move soft")
+        
+        else: self.write_line_to_pfe("move hard")    # Force hard drop if piece hasn't been placed within a set number of moves
 
         self.reward = 0
 
         strin = self.read_line_from_pft()   # receive ack
         strin = self.read_line_from_pft()   # receive "gameover" or first line of report (`lines`)
         if(strin == "gameover"):
-            #print("Gameovered. Rip.")
+            self.piece_placement_timer = 0
+            print("Gameovered. Rip.")
             self.terminated = True
             self.reward -= 7.5                        # penalty for dying
             self.previous_observation = np.zeros(self.observation_space.shape, dtype=np.float32)
             self.observation = np.zeros(self.observation_space.shape, dtype=np.float32)
         else:
+            # Receive and parse move result report
             lines = int(strin.split()[1])
             sent = int(self.read_line_from_pft().split()[1])
             b2b = True if self.read_line_from_pft().split()[1]=="true" else False
             combo = int(self.read_line_from_pft().split()[1])
             invalidmove = True if self.read_line_from_pft().split()[1]=="true" else False
             repeatedmove = True if self.read_line_from_pft().split()[1]=="true" else False
-            
-            self.renderbegin_timestamp = time.perf_counter()
-            self.write_line_to_pfe("ready")
 
+            self.renderbegin_timestamp = time.perf_counter()
             
-            
+            self.write_line_to_pfe("ready")
             strin = self.read_line_from_pft()    # receive ack
-            #print(strin, flush=True)
-            
             
             self.save_previous_observation_components()
             self.previous_observation = self.observation
             self.parse_observations()
 
+            # Timing report
             self.stdioend_timestamp = time.perf_counter()
             stdio_time = self.stdioend_timestamp - self.stdiobegin_timestamp
-            print(f"Doing the important stdio things took: {(stdio_time*1000):.4f} ms")
+            #print(f"Doing the important stdio things took: {(stdio_time*1000):.4f} ms")
             
 
 
@@ -451,42 +474,40 @@ class TetrisEnv(gym.Env):
             #print(self.previous_observation[455:476])
             #print(self.observation[455:476])
             if piece_changed:
+                self.piece_placement_timer = 0
+                # Save board state
                 prev_board = self.previous_observation[0:200].reshape((20, 10))
                 curr_board = self.observation[0:200].reshape((20, 10))
                 #print(prev_board, "\n")
                 #print(curr_board)
 
-                
                 # Decide whether the piece was placed in a position that raises the max board height
                 prev_rows_with_ones = np.where(prev_board.any(axis=1))[0]
-                if len(prev_rows_with_ones) > 0:
-                    prev_bottommost_row = prev_rows_with_ones[-1]
+                if len(prev_rows_with_ones) > 0: prev_bottommost_row = prev_rows_with_ones[-1]
                 else: prev_bottommost_row = 0;
-                #print(f"prev Bottommost filled row index: {prev_bottommost_row}")
-
                 curr_rows_with_ones = np.where(curr_board.any(axis=1))[0]
-                if len(curr_rows_with_ones) > 0:
-                    curr_bottommost_row = curr_rows_with_ones[-1]
+                if len(curr_rows_with_ones) > 0: curr_bottommost_row = curr_rows_with_ones[-1]
                 else: curr_bottommost_row = 0;
+                #print(f"prev Bottommost filled row index: {prev_bottommost_row}")
                 #print(f"curr Bottommost filled row index: {curr_bottommost_row}")
-
-                self.reward += 0.5    # Base reward for placing a piece (before poor placement penalties)
-                
-                # Penalize if the placed piece increased row height (don't penalize if no pieces placed yet
                 if prev_bottommost_row != 0 and curr_bottommost_row > prev_bottommost_row:
-                    penalty = ((curr_bottommost_row - prev_bottommost_row) * 0.1)
-                    print("Board height penalty assigned: ", penalty)
-                    self.reward -= penalty
+                    # Penalize if the placed piece increased row height (don't penalize if no pieces placed yet)
+                    board_height_diff = curr_bottommost_row - prev_bottommost_row
+                    print("Change in board height:", board_height_diff)
+                    board_height_penalty = (board_height_diff * 0.1)
+                    print(f"  height rew/pen: {board_height_penalty:.2f}")
+                    self.reward -= board_height_penalty
 
 
                 # Decide whether the piece was placed in a position that created more holes in the board
                 prev_holes = self.count_enclosed_regions(prev_board)
                 curr_holes = self.count_enclosed_regions(curr_board)
-                #print("Previous enclosed regions: ", prev_holes)
-                #print("Current enclosed regions: ", curr_holes)
+                #print("Previous # enclosed regions: ", prev_holes)
+                #print("Current # enclosed regions: ", curr_holes)
                 if curr_holes > prev_holes:
-                    self.holes_created += 1
-                    #print("Assigning hole-creation penalty")
+                    holes_diff = curr_holes - prev_holes
+                    self.holes_created += holes_diff
+                    #print("Holes Created:", holes_diff)
                     #self.reward -= 0.25
 
                 # Decide how much overhang the placed piece caused
@@ -503,25 +524,35 @@ class TetrisEnv(gym.Env):
                             col_overhang += 1
                         else: break
                     #print("Overhang in col ", col, "1: ", col_overhang)
-                print("Piece Overhang: ", piece_overhang)
-                overhang_reward = max(-0.75, 0.05 - (0.25 * piece_overhang))  # Reward overhang 0, neutral == 1, penalize > 1. Max penalty of -1
-                print("  rew/pen=", overhang_reward)
-                self.reward +=  overhang_reward   
+                print("Piece Overhang:", piece_overhang)
+                # Reward overhang 0, neutral == 1, penalize > 1. Max penalty of -1.25
+                overhang_reward = max(-1.25, 0.35 - (0.35 * piece_overhang))
+                print(f"  overhang rew/pen: {overhang_reward:.2f}")
+                self.reward +=  overhang_reward
                 self.total_overhang += piece_overhang
-                
-                #time.sleep(1)
-                
-                
 
-                self.reward += lines                          # +1 reward per line cleared
+                # Determine jagged-ness of playfield
+                prev_jagg = self.count_board_jaggedness(prev_board)
+                curr_jagg = self.count_board_jaggedness(curr_board)
+                diff_jagg = curr_jagg - prev_jagg
+                print("Change in jaggedness was:", diff_jagg)
+                jagg_rew = diff_jagg/20
+                self.reward -= jagg_rew
+                print("  jaggedness rew/pen:", jagg_rew)
+                    
+                
+                
+                # Simple rewards
+                self.reward += 0.5                            # +0.5 for placing a piece
+                self.reward += lines*2                        # +2 reward per line cleared
                 self.reward += sent                           # +1 reward per line sent
                 self.reward += (1 if b2b else 0)              # +1 reward if b2b'd
                 self.reward += combo/2.0                      # +0.5 reward per combo
-                self.reward -= (0.15 if invalidmove else 0.0)  # -0.1 reward if invalid move
-                self.reward -= (0.2 if repeatedmove else 0.0) # -0.1 reward if repeated move (avoid, but if you need a repeated for some reason it's ok)
-    
-                #self.reward /= 5   # normalize, maybe
-                
+                self.reward -= (0.15 if invalidmove else 0.0)  # -0.15 reward if invalid move
+                self.reward -= (0.2 if repeatedmove else 0.0) # -0.2 reward if repeated move (avoid, but if you need a repeated for some reason it's ok)
+                print(f"Total piece rew/pen: {self.reward:.2f}\n")
+
+                # Log data
                 if lines > 0:
                     self.lines_cleared += lines
                 if invalidmove:
@@ -530,11 +561,14 @@ class TetrisEnv(gym.Env):
                     self.repeated_moves += 1
                 if piece_changed:
                     self.pieces_placed += 1
+            
+            else: # Piece wasn't placed
+                self.piece_placement_timer += 1
+            
+        
             # To implement:
-            # + reward for placing blocks without any gaps below them
-            # - penalty for placing blocks with overhang (inverse of above)
-            # + reward for filling partially-filled lines
-            # + small reward for placing a piece (survival)
+            # + reward for filling partially-filled lines?
+            # =-reward/penalty for avoiding/creating a jagged playfield
             #print("Step complete, rewards assigned.", flush=True)
 
     
@@ -558,7 +592,7 @@ class TetrisEnv(gym.Env):
 
         self.stepend_timestamp = time.perf_counter()
         step_time = self.stepend_timestamp - self.stepbegin_timestamp
-        print(f"Full step took: {(step_time*1000):.4f} ms")
+        #print(f"Full step took: {(step_time*1000):.4f} ms")
 
         return self.observation, self.reward, self.terminated, self.truncated, info
 
