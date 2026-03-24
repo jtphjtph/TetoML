@@ -1,1 +1,3 @@
-(Placeholder README.md until I get around to adding one)
+Repo for personal RL-exploration project.
+
+Complete project description readme pending.
