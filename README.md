@@ -1,3 +1,3 @@
-Repo for personal RL-exploration project.
+Repo for a personal RL-exploration project.
 
 Complete project description readme pending.
